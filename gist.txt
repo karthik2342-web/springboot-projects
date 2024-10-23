@@ -1,0 +1,723 @@
+spring:
+  application:
+    name: spring-cloud-gateway-app
+
+  cloud:
+    gateway:
+      routes:
+        - id: helloservice-route
+          uri: http://localhost:8071
+          predicates:
+            - Path=/rest/service/**
+
+server:
+  port: 8073
+
+-----------------------------------
+spring.datasource.url=jdbc:h2:mem:testdb
+--------------------------------------
+	spring.datasource.driverClassName=org.h2.Driver
+	spring.datasource.username=sa
+	spring.datasource.password=
+	spring.h2.console.enabled=true
+	# default path: h2-console
+	spring.h2.console.path=/h2-ui
+----------------------
+jdbc:h2:mem:3aee1a20-70f0-4965-8cff-5ad7802908aa
+-------------------
+spring.jpa.show-sql=true
+	spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect
+	spring.jpa.hibernate.ddl-auto= none
+	-----
+
+		spring.datasource.url=jdbc:mysql://localhost:3306/test
+		spring.datasource.username=root
+		spring.datasource.password=root
+		spring.jpa.hibernate.dialect=org.hibernate.dialect.MySQL5Dialect
+		spring.jpa.hibernate.naming-strategy=org.hibernate.cfg.ImproveNamingStrategy
+		spring.jpa.hibernate.ddl-auto=update
+		spring.jpa.show-sql=true
+
+-----------------------------------------------
+https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html
+--------------------------------------------------
+https://t.ly/zmG2T
+--------------------------------------------------
+https://www.splunk.com/en_us/blog/learn/microservices-load-balancing.html
+-----------------------------
+https://docs.spring.io/spring-cloud-gateway/docs/current/reference/html/
+-----------------------------------------
+resilience4j:
+  circuitbreaker:
+    instances:
+      clientService:
+       registerHealthIndicator: true
+       eventConsumerBufferSize: 10
+       automaticTransitionFromOpenToHalfOpenEnabled: true
+       failureRateThreshold: 50
+       minimumNumberOfCalls: 5
+       permittedNumberOfCallsInHalfOpenState: 3
+       slidingWindowSize: 10
+       waitDurationInOpenState: 5s
+       slidingWindowType: COUNT_BASED
+
+spring:
+  application:
+    name: helloservres4jclient
+server:
+   port: 8095    
+   
+management:
+  health:
+    circuitbreakers:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+   health:
+     show-details: always
+
+------------------------------------
+https://docs.spring.io/spring-cloud-openfeign/docs/2.2.10.RELEASE/reference/html/
+--------------------------------------------------------------
+SPRING JWT SECURITY WITH H2 database
+---------------------------------------------------------------
+
+import com.iiht.filter.MyJWTFilter;
+import com.iiht.service.MyUserDetailsService;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.password.NoOpPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+
+@Configuration
+@EnableWebSecurity
+public class MySecurityConfig {
+
+    @Autowired
+    private MyUserDetailsService myUserDetailsService;
+
+    @Autowired
+    MyJWTFilter myJWTFilter;
+    @Bean
+    public PasswordEncoder passwordEncoder(){
+        return NoOpPasswordEncoder.getInstance();
+    }
+    @Bean
+    public AuthenticationProvider myAuthenticationProvider(){
+        DaoAuthenticationProvider authenticationProvider=new DaoAuthenticationProvider();
+        authenticationProvider.setUserDetailsService(myUserDetailsService);
+        authenticationProvider.setPasswordEncoder(passwordEncoder());
+        return authenticationProvider;
+    }
+
+    @Bean
+    public SecurityFilterChain mySecurityFilterChain(HttpSecurity http) throws Exception {
+       http
+               .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+               .addFilterBefore(myJWTFilter, UsernamePasswordAuthenticationFilter.class)
+               .csrf((csrf) -> csrf.disable())
+               .authorizeHttpRequests((requests) -> requests
+                       .requestMatchers("/api1").hasAnyAuthority("ADMIN")
+                       .requestMatchers("/api2").hasAnyAuthority("HR")
+                       //.requestMatchers("/api1","/api2").authenticated()
+                       .requestMatchers("/","/authenticate").permitAll())
+               .formLogin(Customizer.withDefaults())
+               .httpBasic(Customizer.withDefaults());
+        return http.build();
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+}
+-------------------------------------
+
+@RestController
+public class MyController {
+    @GetMapping("/")
+    public String welcome() {
+        return "Home page";
+    }
+    @GetMapping("/api1")
+    public String api1() {
+        return "api1 !!";
+    }
+    @GetMapping("/api2")
+    public String api2() {
+        return "api2 !!";
+    }
+    @PostMapping("/api3")
+    public String api3(@RequestBody UserTO userTO) {
+        return "api3 !!";
+    }
+    @PostMapping("/api4")
+    public String api4(@RequestBody UserTO userTO) {
+        return "api4 !!";
+    }
+
+    @Autowired
+    private AuthenticationManager authenticationManager;
+    @Autowired
+    private MyJwtUtil myJwtUtil;
+
+    @PostMapping("/authenticate")
+    public String generateToken(@RequestBody UserTO userTO) throws Exception {
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(userTO.getUserName(), userTO.getPassword())
+            );
+        } catch (Exception ex) {
+            throw new Exception("inavalid username/password");
+        }
+        return myJwtUtil.generateToken(userTO.getUserName());
+    }
+}
+--------------------------------------------------------------
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Entity
+@Table(name = "SEC_USER")
+public class User {
+    @Id
+    private int id;
+    private String userName;
+    private String password;
+    private String roles;
+}
+---------------------------------
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class UserTO {
+    private String userName;
+    private String password;
+}
+---------------------------------------
+
+@Component
+public class MyJWTFilter extends OncePerRequestFilter {
+
+    @Autowired
+    MyJwtUtil myJwtUtil;
+    @Autowired
+    MyUserDetailsService myUserDetailsService;
+
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, FilterChain filterChain) throws ServletException, IOException {
+
+        String authorizationHeader = httpServletRequest.getHeader("Authorization");
+
+        String token = null;
+        String userName = null;
+
+        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+            token = authorizationHeader.substring(7);
+            userName = myJwtUtil.extractUsername(token);
+        }
+
+        if (userName != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+            UserDetails userDetails = myUserDetailsService.loadUserByUsername(userName);
+
+            if (myJwtUtil.validateToken(token, userDetails)) {
+
+                UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken =
+                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                usernamePasswordAuthenticationToken
+                        .setDetails(new WebAuthenticationDetailsSource().buildDetails(httpServletRequest));
+                SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
+            }
+        }
+        filterChain.doFilter(httpServletRequest, httpServletResponse);
+    }
+}
+---------------------------------
+@Repository
+public interface UserRepository extends JpaRepository<User,Integer> {
+    User findByUserName(String username);
+}
+-------------------------------------------
+@Service
+public class MyUserDetailsService implements UserDetailsService {
+    @Autowired
+    private UserRepository repository;
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = repository.findByUserName(username);
+        List authorities=new ArrayList();
+        authorities.add(new SimpleGrantedAuthority(user.getRoles()));
+        return new org.springframework.security.core.userdetails.User
+                (user.getUserName(), user.getPassword(), authorities);
+    }
+}
+---------------------------------------------
+
+@Service
+public class MyJwtUtil {
+
+    private String secret = "FROM$ALLANWALERWORLD!IAMNOTALONE#FADED#IGNITE";
+
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    public Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+    private Claims extractAllClaims(String token) {
+        return Jwts.parser().setSigningKey(secret).parseClaimsJws(token).getBody();
+    }
+
+    private Boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    public String generateToken(String username) {
+        Map<String, Object> claims = new HashMap<>();
+        return createToken(claims, username);
+    }
+    private String createToken(Map<String, Object> claims, String subject) {
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(subject)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10))
+                .signWith(SignatureAlgorithm.HS256, secret)
+                .compact();
+    }
+    public Boolean validateToken(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    }
+}
+
+---------------------------------------------------
+server:
+  port: 8093
+  
+management:
+  health:
+    circuitbreakers:
+      enabled: true
+  endpoint:
+    health:
+      show-details: always
+      
+  endpoints:
+    web:
+      exposure:
+        include: health
+  
+          
+spring:
+  application:
+    name: api-gateway-resilence4j
+  
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+      - id : helloservice
+        uri: lb://LBSERVICE
+        predicates:
+          - Path=/test/**
+        filters:
+          - name: CircuitBreaker
+            args:
+              name: helloServiceCircuitBreaker
+              fallbackUri: forward:/myfallback  
+      
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    hostname: localhost  
+    
+        
+resilience4j:
+  circuitbreaker:
+    instances:
+      clientService:
+       registerHealthIndicator: true
+       eventConsumerBufferSize: 10
+       automaticTransitionFromOpenToHalfOpenEnabled: true
+       failureRateThreshold: 50
+       minimumNumberOfCalls: 5
+       permittedNumberOfCallsInHalfOpenState: 3
+       slidingWindowSize: 10
+       waitDurationInOpenState: 5s
+       slidingWindowType: COUNT_BASED      
+      
+#management:
+#  health:
+#    circuitbreakers:
+#      enabled: true
+#  endpoints:
+#    web:
+#      exposure:
+#        include: health
+#  endpoint:
+#   health:
+#     show-details: always
+#     
+------------------------------
+Docker commands
+
+docker version
+docker images
+docker ps 
+docker ps -a  or --all lists all containers
+docker pull nginx:1.23
+docker run nginx:1.23   blocks terminal
+docker -d or --detach nginx:1.23
+docker logs <containerid>
+docker stop <containerid>
+
+docker run -ti --rm <container-id> bash
+docker exec -it [container-id] bash         to enter a running container
+
+docker run -d --publish 9000:80 
+ 
+docker run -d --publish 9000:80 nginx:1.23
+or
+docker run -d -p 9000:80 nginx:1.23
+
+docker run --name web-app -d -p 9000:80 nginx:1.23
+
+docker build -t node-app:1.0 .
+------------------------------------------------
+Kubernetes - 
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 30
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+	---------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-svc
+spec:
+  type: NodePort
+  selector:
+    app: nginx
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80	
+	
+---------------------------------------------------
+EC2 MySql - RDS 
+
+https://www.mysql.com/downloads/  
+click MySQL Community 	(GPL) downloads  (last link) 
+
+goto MySQL Yum repo yum (first link)
+
+https://dev.mysql.com/downloads/repo/yum/
+
+
+Red Hat Enterprise Linux 9 / Oracle Linux 9 (Architecture Independent), RPM Package
+
+click on download 
+No thanks, just start my download: right click this link and copy the link
+
+and execute the following command 
+Amazon linux 2023 EC2
+wget https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm
+
+sudo dnf install mysql84-community-release-el9-1.noarch.rpm
+
+sudo dnf install mysql-community-server
+
+mysql --version
+
+sudo systemctl status mysqld
+
+sudo systemctl start mysqld 
+
+path for temporary password:
+
+sudo cat /var/log/mysqld.log |grep "password"
+
+sudo mysql -u root -p 
+
+paste the temporary password 
+
+alter user 'root'@'localhost' identified by 'newpassword'
+
+--------------------------------------
+
+
+Installing MySQL on Ubunt 22.04 image:
+
+1. create an ubuntu ec2 instance 
+2. ssh into ec2 instance 
+3. sudo apt update 
+4. sudo apt install mysql-server 
+5. sudo systemctl status mysql 
+6. sudo mysql   - you will login as root user 
+7. change the password: 
+
+     ALTER USER 'root'@'localhost' 
+	 IDENTIFIED WITH mysql_native_password BY 'newpassword'
+	 
+8. FLUSH PRIVILEGES
+
+START WORKING WITH THE MYSQL
+
+-------------------------------------
+
+
+
+
+
+Connecting to RDS instance from EC2 instance 
+
+mysql -h < mysql connection dns on rds > -P 3306  -u <dbname> -p  
+hit enter and you will be prompted for password : give rds password 
+-----------------------------------------------------
+Amazon Elastic Container Service 
+20. Create cluster -> give it  a name 
+Infrastructure
+21 . choose -> AWS Fargate 
+22. create
+23. Task definitions: create new task definitions 
+24. Task definition family : give it a name 
+Infrastructure requirements:
+25. AWS Fargate selected by default 
+26. CPU .5vCPU  Memory 1 GB
+27. Task execution role : choose Create new role
+Container 
+28. give container a name and copy the image URI and paste in Image URI field
+29. container port 8080 
+30. HealthCheck -> expand 
+command 
+: enter -> CMD-SHELL, curl -f http://localhost:Se8080/actuator/health || exit 1
+31. create 
+32. goto cluster and click on cluster you  created 
+33. create service 
+34. choose Launch Type
+35. Fargate
+Deployment configuration
+Application type
+36. choose -> Service
+37. Family  choose-> the taskdefinition created in previous step
+38. Service name : give a service name
+Networking 
+39.  Security group 
+        create a new security group -> give a name 
+		port no : 8080
+40. create 
+
+
+
+
+
+
+
+41. Goto Task - task configuration: 
+42. click on ENI ID 
+43. find security group with default : 
+44. click on that  : default 
+45. edit inbound rule 
+46. add rule 
+47. type : Custom TCP  port: 8080  source anywhere  0.0.0.0/0
+48 .save rules 
+49.  Task -> Task overview -> copy public ip address and access the rest endpoints 
+
+        
+
+
+
+----------------------------
+Code build roles:
+
+goto IAM  Roles and search for this role : codebuild-xxxx-xxx-service-role
+add the following two policies to the above role:
+
+AmazonEC2ContainerRegistryFullAccess
+AmazonEC2ContainerRegistryPowerUser
+---------------------
+1. Create build project
+2. give it a name
+3.  Source 1 primary  choose Github
+4. Choose -> Connect to the github with access token 
+5. paste the token in the field : Github personal access token
+6. click save token 
+7. goto Github and copy repository url and paste
+ in the field : Repository URL
+ 8.  ignore source version 
+ Environment 
+ 9. Managed image (default selection ) go with it
+ 10. Operating system: Amazon linux 2
+ 11.  Runtime : standard
+ 12.  Image : aws/codebuild/amazonlinus2-x86_64-standard:5.0
+ 13. Image version: Always use the latest image for this runtime version 
+ 14. Privileged: check the check box 
+ 15. New Service Role: codebuild-xxxx-xxx-service-role (note this role name somewhere) - a new role will be created with this name
+**** ignore this as we already created this role in IAM service 
+goto IAM  Roles and search for this role : codebuild-xxxx-xxx-service-role
+add the following two policies to the above role:
+
+AmazonEC2ContainerRegistryFullAccess
+AmazonEC2ContainerRegistryPowerUser
+ ****
+ Buildspec
+16.  choose -> Use a buildspec file 
+Artifacts
+17. no changes 
+Logs:
+18. CloudWatch check the checkbox Give a groupname in the field :
+19. create build project
+-----------------------------------------
+Amazon Elastic Container Service 
+20. Create cluster -> give it  a name 
+Infrastructure
+21 . choose -> AWS Fargate 
+22. create
+23. Task definitions: create new task definitions 
+24. Task definition family : give it a name 
+Infrastructure requirements:
+25. AWS Fargate selected by default 
+26. CPU .5vCPU  Memory 1 GB
+27. Task execution role : choose Create new role
+Container 
+28. give container a name and copy the image URI and paste in Image URI field
+29. container port 8080 
+30. HealthCheck -> expand 
+command 
+: enter -> CMD-SHELL, curl -f http://localhost:Se8080/actuator/health || exit 1
+31. create 
+32. goto cluster and click on cluster you  created 
+33. create service 
+34. choose Launch Type
+35. Fargate
+Deployment configuration
+Application type
+36. choose -> Service
+37. Family  choose-> the taskdefinition created in previous step
+38. Service name : give a service name
+Networking 
+39.  Security group 
+        create a new security group -> give a name 
+		port no : 8080
+40. create 
+
+
+
+
+
+
+
+41. Goto Task - task configuration: 
+42. click on ENI ID 
+43. find security group with default : 
+44. click on that  : default 
+45. edit inbound rule 
+46. add rule 
+47. type : Custom TCP  port: 8080  source anywhere  0.0.0.0/0
+48 .save rules 
+49.  Task -> Task overview -> copy public ip address and access the rest endpoints 
+------------------
+Create pipeline 
+choose custom pipeline 
+---------
+Pipeline settings 
+50. pipeline name -> name 
+51. choose New service role 
+52. check Allow AWS 
+53. Artifact store : choose Default location 
+53. Encryption key : Deafault aws manged key 
+54. Next 
+Source 
+55. Source provider : choose Github version 2
+56. connection : click on connect to Github
+57. connection name : give some name  click connect 
+58.  install  a new app
+59. choose : only select repositories 
+60. select repositories dropdown and choose the boot project 
+61. click on install 
+62. click on connect 
+63. Repository name : choose the repo from dropdown
+64. Branch name : main 
+65. Change detection options
+      check the checkbox start the pipeline on source code change 
+66. Output artifact format 
+      Choose CodePipeline default 
+67. next 
+Add build stage
+68. Build provider : choose AWS CodeBuild 
+69. Region: Asia Pacafic (Mumbai)
+70. Project name: choose the code build project created 
+71. Build type: Single build: 
+72. next 
+	Deploy
+73. Deploy provider: choose : Amazon ECS Region: Asia Pacafic (Mumbai)
+74. Cluster name: choose 
+75. Service Name : choose 
+76. Next 
+77. Review 
+78. create pipeline
+
+
+
+
+
+
+
+
+
+
+
+
+
+
